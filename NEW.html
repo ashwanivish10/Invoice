@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <!-- jsPDF and html2canvas for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- SheetJS for Excel parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .font-playfair {
+            font-family: 'Playfair Display', serif;
+        }
+        #invoice-paper {
+            background-image: url('https://www.transparenttextures.com/patterns/paper.png');
+            background-color: #f9f9f9;
+        }
+        [contenteditable="true"]:focus {
+            outline: 1px solid #a7f3d0;
+            background-color: #f0fdf4;
+            border-radius: 4px;
+        }
+        /* Hide placeholder on focus */
+        [contenteditable="true"]:focus::before {
+            content: "";
+        }
+        /* Placeholder styling */
+        [contenteditable="true"][placeholder]:empty::before {
+            content: attr(placeholder);
+            color: #9ca3af;
+            pointer-events: none;
+            display: inline-block;
+        }
+        .table-row:hover .delete-btn {
+            opacity: 1;
+        }
+        /* Style for date picker */
+        #invoice-date::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            opacity: 0.6;
+        }
+        #invoice-date::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+        }
+
+        /* --- Classic Theme --- */
+        .theme-classic #invoice-paper {
+            background-color: white;
+            background-image: none;
+            box-shadow: none;
+            border: 1px solid #ccc;
+        }
+        .theme-classic .side-banner {
+            display: none;
+        }
+        .theme-classic #invoice-content {
+            grid-column: span 12 / span 12;
+            color: #333;
+        }
+        .theme-classic .font-playfair {
+            font-family: 'Times New Roman', Times, serif;
+        }
+        .theme-classic header h1, .theme-classic header h2 {
+            text-align: center;
+        }
+        .theme-classic th {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+
+        /* --- Minimalist Theme --- */
+        .theme-minimalist #invoice-paper {
+            background: white;
+            box-shadow: none;
+            border-radius: 0;
+            border: 1px solid #e5e7eb;
+        }
+        .theme-minimalist .side-banner {
+            display: none;
+        }
+        .theme-minimalist #invoice-content {
+            grid-column: span 12 / span 12;
+        }
+        .theme-minimalist header h1 {
+            font-family: 'Inter', sans-serif;
+            font-size: 2.5rem;
+            letter-spacing: normal;
+            font-weight: 600;
+        }
+         .theme-minimalist header h2 {
+            font-size: 1.25rem;
+            color: #4b5563;
+        }
+        .theme-minimalist th {
+            color: #111827;
+            border-color: #111827;
+        }
+
+        /* --- Colorful Theme --- */
+        .theme-colorful #invoice-paper {
+            background-color: #e0f7fa; /* Light cyan */
+            background-image: none;
+        }
+        .theme-colorful .side-banner {
+            background-image: linear-gradient(to bottom, #4dd0e1, #00acc1);
+        }
+        .theme-colorful #invoice-content {
+             color: #004d40; /* Dark teal */
+        }
+        .theme-colorful header h1 {
+            color: #00796b; /* Teal */
+        }
+        .theme-colorful header h2 {
+            color: #0097a7; /* Cyan */
+        }
+        .theme-colorful th {
+            background-color: #b2ebf2; /* Lighter cyan */
+            color: #006064; /* Darker cyan */
+            border-color: #4dd0e1;
+        }
+        .theme-colorful .border-gray-400 {
+            border-color: #4dd0e1;
+        }
+        .theme-colorful .border-gray-300 {
+            border-color: #f11b54;
+        }
+        .theme-colorful .text-gray-600 {
+             color: #006064;
+        }
+         .theme-colorful .text-gray-500 {
+             color: #00796b;
+        }
+         .theme-colorful .text-gray-800 {
+             color: #004d40;
+        }
+        
+        
+        /* --- Logo Watermark --- */
+        #invoice-content {
+            position: relative;
+        }
+        .logo-watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 350px;
+            height: 350px;
+            pointer-events: none;
+            opacity: 0.15;
+            z-index: 0;
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+</style>
+</head>
+<body class="bg-gray-900" style="background-image: url('https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=3087&auto-format&fit=crop'); background-size: cover; background-position: center;">
+
+    <div class="container mx-auto p-4 sm:p-8">
+        <div class="max-w-4xl mx-auto flex flex-col sm:flex-row justify-center items-center gap-4 mb-6">
+             <button id="downloadPdf" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
+                Download PDF
+            </button>
+            <div class="flex items-center">
+                <label for="theme-selector" class="text-white font-medium mr-3">Theme:</label>
+                <select id="theme-selector" class="bg-gray-700 text-white p-3 rounded-lg border-2 border-gray-600 focus:outline-none focus:border-emerald-500">
+                    <option value="modern">Modern</option>
+                    <option value="classic">Classic</option>
+                    <option value="minimalist">Minimalist</option>
+                    <option value="colorful">Colorful</option>
+                </select>
+            </div>
+        </div>
+        <div id="invoice-paper" class="w-full max-w-4xl mx-auto shadow-2xl rounded-lg grid grid-cols-12">
+            <!-- Decorative Side Banner -->
+            <div class="hidden md:block md:col-span-3 bg-center bg-cover rounded-l-lg side-banner" style="background-image: url('https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=2940&auto=format&fit=crop')"></div>
+
+            <!-- Invoice Content -->
+            <main id="invoice-content" class="col-span-12 md:col-span-9 p-6 sm:p-10 text-gray-800">
+                <div class="logo-watermark"></div>
+                <header class="mb-12">
+                    <h1 class="font-playfair text-4xl sm:text-6xl font-bold tracking-wider">INVOICE</h1>
+                    <h2 contenteditable="true" placeholder="Your Company Name" class="text-2xl mt-2 text-gray-600">Bhookhad Baba</h2>
+                </header>
+
+                <section class="mb-12">
+                    <h3 class="text-gray-500 font-semibold mb-2">INVOICE TO:</h3>
+                    <div contenteditable="true" placeholder="Client Name" class="text-2xl sm:text-3xl font-bold" id="client-name">Morgan Maxwell</div>
+                    <div class="mt-4 text-gray-600">
+                        <p><strong>Date:</strong> <input type="date" id="invoice-date" class="bg-transparent p-0 focus:outline-none text-gray-600 font-medium"></p>
+                        <p><strong>Invoice No:</strong> <span contenteditable="true" placeholder="Invoice #" id="invoice-no">#12345</span></p>
+                    </div>
+                </section>
+
+                <!-- Invoice Table -->
+                <section>
+                    <table class="w-full text-left" id="invoice-table">
+                        <thead>
+                            <tr class="border-b-2 border-gray-400">
+                                <th class="pb-2 w-3/5 text-gray-500 font-semibold">DATE</th>
+                                <th class="pb-2 text-center text-gray-500 font-semibold">QTY</th>
+                                <th class="pb-2 text-right text-gray-500 font-semibold">PRICE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                            <!-- Rows will be added dynamically here -->
+                        </tbody>
+                    </table>
+                     <div class="mt-4 flex items-center gap-4">
+                        <button id="addRow" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg text-sm">+ Add Item</button>
+                        <div>
+                            <label for="uploadExcel" class="cursor-pointer bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg text-sm">Upload Excel</label>
+                            <input type="file" id="uploadExcel" class="hidden" accept=".xlsx, .xls, .csv">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Totals Section -->
+                <section class="mt-16">
+                    <div class="max-w-xs ml-auto text-right">
+                        <div class="border-t-2 border-gray-300 pt-4">
+                            <div class="flex justify-between mb-2">
+                                <span class="font-semibold text-gray-600">Total Tiffin:</span>
+                                <span id="total-tiffin">0</span>
+                            </div>
+                             <div class="flex justify-between mb-2">
+                                <span class="font-semibold text-gray-600">Total:</span>
+                                <span id="total-amount">₹0.00</span>
+                            </div>
+                             <div class="flex justify-between mb-2">
+                                <span class="font-semibold text-gray-600">Paid Amount:</span>
+                                <span contenteditable="true" id="paid-amount" class="editable-amount" placeholder="₹0.00">₹0.00</span>
+                            </div>
+                            <div class="flex justify-between items-baseline mb-2">
+                                <span class="font-semibold text-gray-600">Tax (%):</span>
+                                <div class="flex items-baseline">
+                                    <span contenteditable="true" id="tax-rate" class="editable-amount" placeholder="0">0</span>
+                                    <span>%</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between font-bold text-xl mt-4 pt-2 border-t border-dashed">
+                                <span class="text-gray-800">Amount Due:</span>
+                                <span id="amount-due">₹0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <footer class="mt-16 pt-8 border-t-2 border-gray-300 text-center text-xs text-gray-600">
+                    <p class="font-semibold">Bhookhad Baba</p>
+                    <p>Shop No. 8, First Floor, Aarcity Market, Sector 16C, Gaur City 2, Greater Noida, Ghaziabad, Uttar Pradesh 201009</p>
+                    <p>Contact: 8826513777</p>
+                </footer>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const tableBody = document.getElementById('table-body');
+        const addRowBtn = document.getElementById('addRow');
+        const totalTiffinEl = document.getElementById('total-tiffin');
+        const totalAmountEl = document.getElementById('total-amount');
+        const paidAmountEl = document.getElementById('paid-amount');
+        const taxRateEl = document.getElementById('tax-rate');
+        const amountDueEl = document.getElementById('amount-due');
+        const downloadPdfBtn = document.getElementById('downloadPdf');
+        const uploadExcelInput = document.getElementById('uploadExcel');
+        const themeSelector = document.getElementById('theme-selector');
+        const bodyEl = document.body;
+        
+        // Initial Sample Data
+        const initialData = [
+            { date: '2025-10-01', qty: 1, price: 25.00 },
+            { date: '2025-10-02', qty: 1, price: 30.00 },
+            { date: '2025-10-03', qty: 2, price: 20.00 },
+            { date: '2025-10-04', qty: 1, price: 120.00 },
+            { date: '2025-10-05', qty: 1, price: 20.00 },
+            { date: '2025-10-06', qty: 1, price: 22.00 },
+            { date: '2025-10-07', qty: 1, price: 300.00 },
+        ];
+
+        function createRow(date = '', qty = 1, price = 0.00) {
+            if (tableBody.rows.length >= 60) {
+                // Using a custom modal/alert would be better, but alert is simple for now.
+                const modal = document.createElement('div');
+                modal.innerHTML = `<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"><div class="bg-white p-6 rounded-lg shadow-lg">You have reached the maximum limit of 60 entries.<button class="mt-4 bg-red-500 text-white px-4 py-2 rounded" onclick="this.parentElement.parentElement.remove()">Close</button></div></div>`;
+                document.body.appendChild(modal);
+                return;
+            }
+            const row = document.createElement('tr');
+            row.className = 'table-row border-b border-gray-200';
+            
+            row.innerHTML = `
+                <td class="py-3 pr-2">
+                    <div contenteditable="true" placeholder="Enter Date">${date}</div>
+                </td>
+                <td class="py-3 px-2 text-center">
+                    <div contenteditable="true" placeholder="1">${qty}</div>
+                </td>
+                <td class="py-3 pl-2">
+                    <div class="flex justify-end items-baseline">
+                        <span class="text-gray-500 mr-0.5">₹</span>
+                        <div contenteditable="true" placeholder="0.00">${price.toFixed(2)}</div>
+                    </div>
+                </td>
+                <td class="py-3 pl-2 text-right">
+                    <button class="delete-btn opacity-0 transition-opacity text-red-500 hover:text-red-700 p-1 rounded-full">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </td>
+            `;
+
+            row.querySelector('.delete-btn').addEventListener('click', () => {
+                row.remove();
+                calculateTotal();
+            });
+
+            tableBody.appendChild(row);
+        }
+
+        function calculateTotal() {
+            let total = 0;
+            let totalTiffins = 0;
+            const rows = tableBody.querySelectorAll('tr');
+            rows.forEach(row => {
+                const qtyText = row.children[1].querySelector('div').innerText;
+                const priceText = row.children[2].querySelector('div[contenteditable="true"]').innerText.replace(/[₹,]/g, '');
+
+                const qty = parseFloat(qtyText) || 0;
+                const price = parseFloat(priceText) || 0;
+                total += qty * price;
+                totalTiffins += qty;
+            });
+            
+            totalTiffinEl.innerText = totalTiffins;
+            totalAmountEl.innerText = `₹${total.toFixed(2)}`;
+            
+            const paidAmountText = paidAmountEl.innerText.replace(/[₹,]/g, '');
+            const paidAmount = parseFloat(paidAmountText) || 0;
+            
+            const taxRateText = taxRateEl.innerText.replace('%', '');
+            const taxRate = parseFloat(taxRateText) || 0;
+
+            const taxAmount = total * (taxRate / 100);
+            const amountDue = total + taxAmount - paidAmount;
+
+            amountDueEl.innerText = `₹${amountDue.toFixed(2)}`;
+        }
+
+        addRowBtn.addEventListener('click', () => createRow());
+        
+        document.body.addEventListener('input', (e) => {
+            if (e.target.hasAttribute('contenteditable')) {
+                const parentTd = e.target.closest('td');
+                const parentDiv = e.target.closest('div');
+                if (
+                    parentDiv.classList.contains('editable-amount') ||
+                    (parentTd && (parentTd.cellIndex === 1 || parentTd.cellIndex === 2)) ||
+                    e.target.id === 'tax-rate'
+                ) {
+                     let text = e.target.innerText;
+                     e.target.innerText = text.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                 }
+                calculateTotal();
+            }
+        });
+
+        themeSelector.addEventListener('change', (e) => {
+            const theme = e.target.value;
+            bodyEl.classList.remove('theme-classic', 'theme-minimalist', 'theme-colorful');
+            if (theme !== 'modern') {
+                bodyEl.classList.add(`theme-${theme}`);
+            }
+        });
+        
+        downloadPdfBtn.addEventListener('click', () => {
+            const invoiceContent = document.getElementById('invoice-content');
+            const { jsPDF } = window.jspdf;
+            
+            const clientName = document.getElementById('client-name').innerText.trim() || 'Invoice';
+            const invoiceNo = document.getElementById('invoice-no').innerText.trim().replace('#', '') || 'Details';
+            const fileName = `${clientName}_${invoiceNo}.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_').replace(/_{2,}/g, '_');
+
+            document.querySelectorAll('.delete-btn, #addRow, label[for="uploadExcel"]').forEach(el => el.style.visibility = 'hidden');
+            
+            html2canvas(invoiceContent, { scale: 4, useCORS: true }).then(canvas => {
+                const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+
+                // Set a standard portrait width (like A4 at 72dpi, which is 595px)
+                const pdfWidth = 595;
+                // Calculate the height required to maintain the aspect ratio
+                const pdfHeight = (canvasHeight * pdfWidth) / canvasWidth;
+
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'px',
+                    format: [pdfWidth, pdfHeight]
+                });
+
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save(fileName);
+                
+                document.querySelectorAll('.delete-btn, #addRow, label[for="uploadExcel"]').forEach(el => el.style.visibility = 'visible');
+            });
+        });
+
+        uploadExcelInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+                    
+                    tableBody.innerHTML = '';
+                    
+                    // Assumes first row is header and skips it.
+                    json.slice(1).forEach(rowData => {
+                        if (rowData.length > 0) { 
+                            let [date, qty, price] = rowData;
+                            if (date && qty && price !== undefined) {
+                                let formattedDate = '';
+                                if (date instanceof Date) {
+                                    // It's a JS Date object, format it to YYYY-MM-DD
+                                    const year = date.getFullYear();
+                                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                                    const day = String(date.getDate()).padStart(2, '0');
+                                    formattedDate = `${year}-${month}-${day}`;
+                                } else {
+                                    // It's likely already a string, use it as is
+                                    formattedDate = String(date);
+                                }
+                                createRow(formattedDate, parseFloat(qty) || 1, parseFloat(price) || 0.00);
+                            }
+                        }
+                    });
+                    calculateTotal();
+                } catch (error) {
+                    console.error("Error processing Excel file:", error);
+                    alert("There was an error processing your Excel file. Please ensure it's in the correct format (Date, Qty, Price).");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = ''; 
+        });
+
+        // Initialize
+        document.getElementById('invoice-date').valueAsDate = new Date();
+        initialData.forEach(d => createRow(d.date, d.qty, d.price));
+        calculateTotal();
+    </script>
+</body>
+</html>
+
