@@ -228,17 +228,18 @@
 
 
     <div id="invoice-container" class="bg-white p-8 rounded-lg w-full">
+        
         <!-- Header: Logo and Company Name -->
         <header class="flex items-center mb-10">
             <div class="relative group">
-                <img id="logo" src="Untitled design488.png" alt="Company Logo" class="h-16 w-16 object-contain mr-4">
+                <img id="logo" src="icon.png" alt="Company Logo" class="h-16 w-16 object-contain mr-4">
                 <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
                     <label for="logo-upload" class="cursor-pointer text-white text-xs text-center">Change</label>
                     <input type="file" id="logo-upload" class="hidden" accept="image/*">
                 </div>
             </div>
             <div>
-                <h1 contenteditable="true" class="text-2xl font-bold primary-text">Bhookhad Baba</h1>
+                <h1 contenteditable="true" class="text-3xl font-bold primary-text">Bhookhad Baba</h1>
                 <p contenteditable="true" class="text-level-3">Tiffin Service</p>
             </div>
         </header>
@@ -251,7 +252,9 @@
                     <h2 class="text-3xl font-bold text-level-1">Bill</h2>
                 </div>
                 <div class="text-right text-level-2 space-y-1">
-                    <p>Date: <span contenteditable="true">03/04/22</span></p>
+                    <!-- <p>Date: <span contenteditable="true">03/04/22</span></p> -->
+
+                    <p>Date: <span id="current-date" contenteditable="true"></span></p>
                     <p class="whitespace-nowrap">Invoice to : <span contenteditable="true" id="invoice-to-name">Monu</span></p>
                     <p>Invoice no : <span contenteditable="true">#0001</span></p>
                 </div>
@@ -292,11 +295,11 @@
                     </div>
                     <div class="flex justify-between mb-2">
                         <span>TOTAL AMOUNT:</span>
-                        <span id="total-amount">₹36.15</span>
+                        <span id="total-amount">₹</span>
                     </div>
                     <div class="flex justify-between mb-2">
                         <span>AMOUNT PAID:</span>
-                        <span contenteditable="true" id="amount-paid">₹2.50</span>
+                        <span contenteditable="true" id="amount-paid">₹0</span>
                     </div>
                     <div class="flex justify-between mb-2">
                         <span>TAX :</span>
@@ -304,7 +307,7 @@
                     </div>
                     <div class="flex justify-between font-bold text-lg text-level-1">
                         <span>AMOUNT DUE:</span>
-                        <span id="amount-due">₹33.65</span>
+                        <span id="amount-due">₹</span>
                     </div>
                 </div>
             </div>
@@ -343,6 +346,26 @@
     </div>
 
     <script>
+
+        // 1. Aaj ki date ke liye ek naya Date object banayein
+  const today = new Date();
+
+  // 2. Date ko apne format (DD/MM/YY) mein badalne ke liye options set karein
+  // 'en-IN' locale ka istemaal DD/MM/YY format ke liye kiya jaata hai
+  const options = {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit'
+  };
+
+  // 3. Date ko format karein
+  const formattedDate = today.toLocaleDateString('en-IN', options);
+
+  // 4. HTML element ko ID se pakdein aur uske andar formatted date daal dein
+  document.getElementById('current-date').textContent = formattedDate;
+
+
+
         document.addEventListener('DOMContentLoaded', () => {
             const logoUpload = document.getElementById('logo-upload');
             const logo = document.getElementById('logo');
@@ -434,12 +457,12 @@
                     const priceValue = parseFloat(span.textContent.replace('₹', '').trim());
                     if (!isNaN(priceValue)) totalAmount += priceValue;
                 });
-                totalAmountSpan.textContent = `₹${totalAmount.toFixed(2)}`;
+                totalAmountSpan.textContent = `₹${totalAmount.toFixed(0)}`;
 
                 const paidValue = parseFloat(amountPaidSpan.textContent.replace('₹', '').trim());
                 const amountPaid = !isNaN(paidValue) ? paidValue : 0;
                 const amountDue = totalAmount - amountPaid;
-                amountDueSpan.textContent = `₹${amountDue.toFixed(2)}`;
+                amountDueSpan.textContent = `₹${amountDue.toFixed(0)}`;
             };
 
             const createItemRow = (item = { date: 'New Item Date', qty: '1', price: '₹0.00' }) => {
@@ -482,58 +505,116 @@
             
             uploadExcelBtn.addEventListener('click', () => excelUpload.click());
 
-            excelUpload.addEventListener('change', (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
 
-                const reader = new FileReader();
-                reader.onload = (e) => {
+// --- YAH POORA UPDATED EXCEL UPLOAD EVENT LISTENER HAI ---
+excelUpload.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+
+            // `raw: false` ka upyog karein taaki formatted dates (string waali) bhi mil sakein
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' });
+
+            if (jsonData.length === 0) throw new Error("Excel sheet is empty or invalid.");
+
+            itemsTbody.innerHTML = '';
+            let itemsAdded = 0;
+
+            jsonData.forEach(item => {
+                // --- SUDHAR: Headers mein extra space ke liye .trim() ---
+                const dateKey = Object.keys(item).find(k => k.trim().toLowerCase() === 'date');
+                const qtyKey = Object.keys(item).find(k => k.trim().toLowerCase() === 'qty');
+                const priceKey = Object.keys(item).find(k => k.trim().toLowerCase() === 'price');
+
+                // Agar zaroori columns nahi mile, to is row ko chhod dein
+                if (!dateKey || !qtyKey || !priceKey) return;
+
+                // --- SUDHAR 1: NAYA DATE LOGIC ('7 Oct 2025' format) ---
+                let dateValue = item[dateKey];
+                
+                if (dateValue instanceof Date) {
+                    // Agar yah pehle se hi ek Date object hai
+                    dateValue = dateValue.toLocaleDateString('en-GB', { 
+                        day: 'numeric', 
+                        month: 'short', 
+                        year: 'numeric' 
+                    });
+                } 
+                else if (typeof dateValue === 'string' && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(dateValue.trim())) {
+                    // Agar yah '7/10/25' jaisi string hai
                     try {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array', cellDates:true });
-                        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                        const parts = dateValue.trim().split('/');
+                        const day = parseInt(parts[0], 10);
+                        const month = parseInt(parts[1], 10) - 1; // JS mein mahine 0 se shuru hote hain
+                        let year = parseInt(parts[2], 10);
 
-                        if(jsonData.length === 0) throw new Error("Excel sheet is empty or invalid.");
+                        if (year < 100) year += 2000; // '25' ko '2025' banayein
                         
-                        itemsTbody.innerHTML = '';
-                        let itemsAdded = 0;
+                        const parsedDate = new Date(year, month, day);
 
-                        jsonData.forEach(item => {
-                            const dateKey = Object.keys(item).find(k => k.toLowerCase() === 'date');
-                            const qtyKey = Object.keys(item).find(k => k.toLowerCase() === 'qty');
-                            const priceKey = Object.keys(item).find(k => k.toLowerCase() === 'price');
-
-                            if (!dateKey || !qtyKey || !priceKey) return; 
-                            
-                            let dateValue = item[dateKey];
-                            if (dateValue instanceof Date) {
-                               dateValue = dateValue.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-                            }
-
-                            const priceValue = typeof item[priceKey] === 'number' 
-                                ? `₹${item[priceKey].toFixed(2)}` 
-                                : String(item[priceKey]).startsWith('₹') ? item[priceKey] : `₹${item[priceKey]}`;
-
-                            createItemRow({ date: dateValue, qty: item[qtyKey], price: priceValue });
-                            itemsAdded++;
-                        });
-
-                        if (itemsAdded === 0) throw new Error("No valid items found. Ensure columns are DATE, QTY, PRICE.");
+                        // Check karein ki date valid hai
+                        if (parsedDate.getDate() === day && parsedDate.getMonth() === month && parsedDate.getFullYear() === year) {
+                             dateValue = parsedDate.toLocaleDateString('en-GB', { 
+                                 day: 'numeric', 
+                                 month: 'short', 
+                                 year: 'numeric' 
+                             });
+                        }
+                        // Agar valid date nahi bani, to use original string hi rehne dein
                     } catch (error) {
-                        console.error("Error processing Excel file:", error);
-                        uploadExcelBtn.textContent = 'Upload Failed!';
-                        uploadExcelBtn.classList.add('bg-red-600', 'hover:bg-red-700');
-                        setTimeout(() => {
-                            uploadExcelBtn.textContent = 'Upload Excel';
-                            uploadExcelBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
-                        }, 3000);
-                    } finally {
-                        event.target.value = '';
+                        // Error aane par, dateValue ko original string hi rehne dein
                     }
-                };
-                reader.readAsArrayBuffer(file);
+                }
+                // Agar yah "N/A" jaisa kuch aur hai, to vah vaisa hi rahega.
+
+                // --- Qty ko saaf karein ---
+                const qtyValue = String(item[qtyKey]).trim();
+
+                // --- SUDHAR 2: PRICE (KEEMAT) KO SAAF KARNA ---
+                let priceString = String(item[priceKey]).trim();
+                // Currency symbol (₹) aur commas (,) ko hata dega
+                priceString = priceString.replace(/₹|,/g, ''); 
+                
+                const priceNum = parseFloat(priceString);
+                let priceValue;
+
+                if (!isNaN(priceNum)) {
+                    // Agar yah ek valid number hai, to ise format karein
+                    priceValue = `₹${priceNum.toFixed(2)}`;
+                } else {
+                    // Agar yah "N/A" jaisa kuch hai, to original value ka upyog karein
+                    priceValue = item[priceKey];
+                }
+
+                // Saaf ki gayi values ke saath row banayein
+                createItemRow({ date: dateValue, qty: qtyValue, price: priceValue });
+                itemsAdded++;
             });
+
+            if (itemsAdded === 0) throw new Error("No valid items found. Ensure columns are DATE, QTY, PRICE.");
+        
+        } catch (error) {
+            // --- Error handling (Aapka original code) ---
+            console.error("Error processing Excel file:", error);
+            uploadExcelBtn.textContent = 'Upload Failed!';
+            uploadExcelBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+            setTimeout(() => {
+                uploadExcelBtn.textContent = 'Upload Excel';
+                uploadExcelBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+            }, 3000);
+        } finally {
+            // File input ko reset karein
+            event.target.value = ''; 
+        }
+    };
+    reader.readAsArrayBuffer(file);
+});
 
             // --- Client Preset Logic ---
             const getClients = () => JSON.parse(localStorage.getItem('invoiceClients')) || [];
@@ -635,4 +716,3 @@
     </script>
 </body>
 </html>
-
