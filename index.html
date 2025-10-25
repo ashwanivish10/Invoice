@@ -604,7 +604,7 @@
             // End of Client Preset Logic
 
             downloadPdfBtn.addEventListener('click', () => {
-                const filename = `invoice to ${document.getElementById('invoice-to-name').textContent.trim() || 'invoice'}.pdf`;
+                const filename = `${document.getElementById('invoice-to-name').textContent.trim() || 'invoice'}.pdf`;
                 const elementsToHide = document.querySelectorAll('.no-print');
                 
                 elementsToHide.forEach(el => el.style.visibility = 'hidden');
